@@ -9,14 +9,14 @@ const consts = @import("constants.zig");
 const utils = @import("utils.zig");
 
 /// IP Packet - [IETC RFC 791](https://datatracker.ietf.org/doc/html/rfc791#section-3.1)
-pub const IPPacket = struct{
+pub const IP = struct {
     header: Header = .{},
     options: ?[]Option = null,
     pseudo_header: ?SegmentPseudoHeader = null,
     len: u16 = 20,
 
     /// IP Header
-    pub const Header = packed struct{
+    pub const Header = packed struct {
         version: u4 = 4,
         ip_header_len: u4 = 5,
         service_type: ServiceType = .{},
@@ -27,7 +27,7 @@ pub const IPPacket = struct{
         frag_offset: u13 = 0,
 
         time_to_live: u8 = 64,
-        protocol: u8 = Protocols.UDP, 
+        protocol: u8 = Protocols.UDP,
         header_checksum: u16 = 0,
 
         src_ip_addr: Addr.IPv4 = .{},
@@ -38,7 +38,7 @@ pub const IPPacket = struct{
         //padding: u8 = 0,
 
         /// IP Header Service Type Info
-        pub const ServiceType = packed struct(u8){
+        pub const ServiceType = packed struct(u8) {
             precedence: u3 = ServicePrecedence.ROUTINE,
             delay: u1 = 0,
             throughput: u1 = 0,
@@ -49,7 +49,7 @@ pub const IPPacket = struct{
         };
 
         /// IP Header Flags Info
-        pub const Flags = packed struct(u3){
+        pub const Flags = packed struct(u3) {
             reserved: bool = false,
             dont_frag: bool = true,
             more_frags: bool = false,
@@ -57,9 +57,8 @@ pub const IPPacket = struct{
             pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
         };
 
-
         // IP Packet Service Precedence Levels
-        pub const ServicePrecedence = struct{
+        pub const ServicePrecedence = struct {
             pub const ROUTINE: u3 = 0;
             pub const PRIORITY: u3 = 1;
             pub const IMMEDIATE: u3 = 2;
@@ -68,12 +67,10 @@ pub const IPPacket = struct{
             pub const CRITIC: u3 = 5;
             pub const INTERNETWORK_CONTROL: u3 = 6;
             pub const NETWORK_CONTROL: u3 = 7;
-
-            pub usingnamespace utils.ImplEnumerable(@This());
         };
 
         /// IP Protocols
-        pub const Protocols = struct{
+        pub const Protocols = struct {
             pub const ICMP: u8 = 1;
             pub const IGMP: u8 = 2;
             pub const TCP: u8 = 6;
@@ -81,14 +78,11 @@ pub const IPPacket = struct{
             pub const ENCAP: u8 = 41;
             pub const OSPF: u8 = 89;
             pub const SCTP: u8 = 132;
-
-            pub usingnamespace utils.ImplEnumerable(@This());
         };
-
 
         /// Calculate the Total Length and Checksum of this IP Packet
         pub fn calcLengthAndChecksum(self: *@This(), alloc: mem.Allocator, _: ?[]const u8, opts_len: u16, payload: []const u8) !void {
-            const hdr_len: u16 = @bitSizeOf(IPPacket.Header) / 8; 
+            const hdr_len: u16 = @bitSizeOf(IP.Header) / 8;
             self.total_len = hdr_len + @as(u16, @intCast(payload.len));
             self.ip_header_len = @truncate((hdr_len + opts_len) / 4);
 
@@ -97,29 +91,29 @@ pub const IPPacket = struct{
             self.header_checksum = calcChecksum(header_bytes);
         }
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.HEADER,
             .layer = 3,
         });
     };
 
     /// Segment Pseudo Header
     /// Does NOT include the Segment Length, which is handled at the Segment level (Layer 4).
-    pub const SegmentPseudoHeader = packed struct(u80){
+    pub const SegmentPseudoHeader = packed struct(u80) {
         src_ip_addr: Addr.IPv4 = .{},
-        
+
         dst_ip_addr: Addr.IPv4 = .{},
-        
+
         protocol: u16 = Header.Protocols.UDP,
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.HEADER,
             .layer = 3,
         });
     };
 
     /// IP Options
-    pub const Option = struct{
+    pub const Option = struct {
         opt_type: OptionType = .{},
         len: ?u8 = null,
         data: ?[]const u8 = null,
@@ -129,25 +123,25 @@ pub const IPPacket = struct{
             if (byte_buf.len == 0) return error.EmptyByteBuffer;
             if (!OptionTypes.inEnum(byte_buf[0])) return error.UnimplementedType;
             return switch (@as(OptionTypes.Enum(), @enumFromInt(byte_buf[0]))) {
-                .END_OF_OPTS, .NO_OP => .{ 
+                .END_OF_OPTS, .NO_OP => .{
                     .opt_type = @bitCast(byte_buf[0]),
                     .data = byte_buf[3..7],
                 },
-                else =>  .{
+                else => .{
                     .opt_type = @bitCast(byte_buf[0]),
                     .len = byte_buf[1],
-                    .data = byte_buf[2..(byte_buf[1] + (4 - (byte_buf[1] % 4 )))],
-                }
+                    .data = byte_buf[2..(byte_buf[1] + (4 - (byte_buf[1] % 4)))],
+                },
             };
         }
-        
+
         /// IP Option Type
-        pub const OptionType = packed struct{
+        pub const OptionType = packed struct {
             copied_flag: bool = false,
             opt_class: u2 = 0,
             opt_num: u5 = 0,
 
-            pub const OptionClasses = struct{
+            pub const OptionClasses = struct {
                 pub const CONTROL: u2 = 0;
                 pub const RESERVED: u2 = 1;
                 pub const DEBUG: u2 = 2;
@@ -160,7 +154,7 @@ pub const IPPacket = struct{
         };
 
         /// IP Option Types
-        pub const OptionTypes = struct{
+        pub const OptionTypes = struct {
             pub const END_OF_OPTS: u8 = 0;
             pub const NO_OP: u8 = 1;
             pub const RECORD_ROUTE: u8 = 7;
@@ -187,9 +181,9 @@ pub const IPPacket = struct{
                 else => 0,
             };
         }
-        
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.OPTION, 
+
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.OPTION,
             .layer = 3,
         });
     };
@@ -198,55 +192,47 @@ pub const IPPacket = struct{
     pub fn from(alloc: mem.Allocator, byte_buf: []const u8) !@This() {
         const hdr_end: u16 = @bitSizeOf(Header) / 8;
         if (byte_buf.len < hdr_end) return error.UnexpectedlySmallBuffer;
-        var size_buf: [@sizeOf(Header)]u8 = .{ 0 } ** @sizeOf(Header);
+        var size_buf: [@sizeOf(Header)]u8 = .{0} ** @sizeOf(Header);
         for (size_buf[0..hdr_end], byte_buf[0..hdr_end]) |*s, b| s.* = b;
         var hdr: Header = mem.bytesToValue(Header, size_buf[0..]);
         try hdr.toLSB();
         const ip_len: u16 = hdr.ip_header_len * @as(u16, 4);
-        //const ip_len: u16 = @intCast(hdr.ip_header_len * 4);
-        const p_hdr_end: u16 = ip_len + @as(u16, switch (@as(Header.Protocols.Enum(), @enumFromInt(hdr.protocol))) {
+        const protocol_enum: utils.structAsEnum(Header.Protocols) = @enumFromInt(hdr.protocol);
+        const p_hdr_end: u16 = ip_len + @as(u16, switch (protocol_enum) {
             .TCP, .UDP => @bitSizeOf(SegmentPseudoHeader) / 8,
             else => 0,
         });
         return .{
             .header = hdr,
-            .options = 
-                if (ip_len > 20) opts: {
-                    const opts_raw_buf = byte_buf[hdr_end..ip_len];
-                    var opts_list = std.ArrayList(Option).init(alloc);
-                    var idx: u16 = 0;
-                    while (idx < opts_raw_buf.len) {
-                        const opt = try Option.from(opts_raw_buf[idx..]);
-                        idx += @bitSizeOf(@TypeOf(opt));
-                        try opts_list.append(opt);
-                    }
-                    break :opts try opts_list.toOwnedSlice();
+            .options = if (ip_len > 20) opts: {
+                const opts_raw_buf = byte_buf[hdr_end..ip_len];
+                var opts_list = std.ArrayList(Option).init(alloc);
+                var idx: u16 = 0;
+                while (idx < opts_raw_buf.len) {
+                    const opt = try Option.from(opts_raw_buf[idx..]);
+                    idx += @bitSizeOf(@TypeOf(opt));
+                    try opts_list.append(opt);
                 }
-                else null,
-            .pseudo_header = 
-                if (p_hdr_end -| hdr_end > 0) pHdr: {
-                    const pseudo_size = @bitSizeOf(SegmentPseudoHeader) / 8;
-                    var pseudo_buf: [@sizeOf(SegmentPseudoHeader)]u8 = .{ 0 } ** @sizeOf(SegmentPseudoHeader);
-                    for (pseudo_buf[0..pseudo_size], byte_buf[hdr_end..(hdr_end + pseudo_size)]) |*s, b| s.* = b;
-                    break :pHdr mem.bytesToValue(SegmentPseudoHeader, pseudo_buf[0..]);
-                }
-                else null,
+                break :opts try opts_list.toOwnedSlice();
+            } else null,
+            .pseudo_header = if (p_hdr_end -| hdr_end > 0) pHdr: {
+                const pseudo_size = @bitSizeOf(SegmentPseudoHeader) / 8;
+                var pseudo_buf: [@sizeOf(SegmentPseudoHeader)]u8 = .{0} ** @sizeOf(SegmentPseudoHeader);
+                for (pseudo_buf[0..pseudo_size], byte_buf[hdr_end..(hdr_end + pseudo_size)]) |*s, b| s.* = b;
+                break :pHdr mem.bytesToValue(SegmentPseudoHeader, pseudo_buf[0..]);
+            } else null,
             .len = ip_len,
         };
     }
-    
-    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-        .kind = BFG.Kind.PACKET, 
-        .layer = 3, 
-        .name = "IP_Packet" 
-    });
+
+    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.PACKET, .layer = 3, .name = "IP_Packet" });
 };
 
 /// ARP Packet - [IETF RFC 826](https://datatracker.ietf.org/doc/html/rfc826)
-pub const ARPPacket = packed struct{
+pub const ARP = packed struct {
     header: Header = .{},
 
-    pub const Header = packed struct{
+    pub const Header = packed struct {
         hw_type: u16 = consts.ARPHRD_ETHER,
         proto_type: u16 = 0x0800,
         hw_addr_len: u8 = 6,
@@ -257,7 +243,7 @@ pub const ARPPacket = packed struct{
         tgt_hw_addr: Addr.MAC = mem.zeroes(Addr.MAC),
         tgt_proto_addr: Addr.IPv4 = .{},
 
-        pub const OpCodes = struct{
+        pub const OpCodes = struct {
             pub const REQUEST: u16 = 1;
             pub const REPLY: u16 = 2;
 
@@ -266,23 +252,19 @@ pub const ARPPacket = packed struct{
 
         pub fn calcCRC(_: @This(), _: mem.Allocator, _: []const u8) !void {}
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.HEADER,
             .layer = 3,
         });
     };
 
-    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-        .kind = BFG.Kind.PACKET, 
-        .layer = 3, 
-        .name = "ARP_Packet" 
-    });
+    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.PACKET, .layer = 3, .name = "ARP_Packet" });
 };
 
 /// ICMP Packet - [IETF RFC 792](https://datatracker.ietf.org/doc/html/rfc792)
-pub const ICMPPacket = packed struct{
+pub const ICMP = packed struct {
     // Layer 4
-    header: ICMPPacket.Header = .{},
+    header: ICMP.Header = .{},
 
     /// ICMP Header
     pub const Header = packed struct(u64) {
@@ -295,7 +277,7 @@ pub const ICMPPacket = packed struct{
         seq_num: u16 = 0,
 
         /// ICMP Types
-        pub const Types = struct{
+        pub const Types = struct {
             pub const ECHO_REPLY: u8 = 0;
             pub const DEST_UNREACHABLE: u8 = 3;
             pub const SRC_QUENCH: u8 = 4;
@@ -312,24 +294,24 @@ pub const ICMPPacket = packed struct{
         };
 
         /// ICMP Codes
-        pub const Codes = struct{
-            pub const DEST_UNREACHABLE = struct{
+        pub const Codes = struct {
+            pub const DEST_UNREACHABLE = struct {
                 pub const NET: u8 = 0;
                 pub const HOST: u8 = 1;
                 pub const PROTOCOL: u8 = 2;
                 pub const PORT: u8 = 3;
                 pub const FRAG_NEEDED: u8 = 4;
                 pub const SRC_ROUTE_FAILED: u8 = 5;
-                
+
                 pub usingnamespace utils.ImplEnumerable(@This());
             };
-            pub const TIME_EXCEEDED = struct{
+            pub const TIME_EXCEEDED = struct {
                 pub const TTL: u8 = 0;
                 pub const FRAG_REASSEMBLY: u8 = 1;
 
                 pub usingnamespace utils.ImplEnumerable(@This());
             };
-            pub const REDIRECT = struct{
+            pub const REDIRECT = struct {
                 pub const NETWORK: u8 = 0;
                 pub const HOST: u8 = 1;
                 pub const TOS_AND_NETWORK: u8 = 2;
@@ -348,28 +330,21 @@ pub const ICMPPacket = packed struct{
             self.checksum = calcChecksum(icmp_bytes);
         }
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
-            .layer = 3 
-        });
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.HEADER, .layer = 3 });
     };
 
-    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-        .kind = BFG.Kind.PACKET, 
-        .layer = 4, 
-        .name = "ICMP_Packet" 
-    });
+    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.PACKET, .layer = 4, .name = "ICMP_Packet" });
 };
 
 /// UDP Packet - [IETF RFC 768](https://datatracker.ietf.org/doc/html/rfc768)
-pub const UDPPacket = packed struct{
+pub const UDP = packed struct {
     // Layer 3
-    ip_header: IPPacket.Header = .{
+    ip_header: IP.Header = .{
         .version = 4,
-        .protocol = IPPacket.Header.Protocols.UDP,
+        .protocol = IP.Header.Protocols.UDP,
     },
     // Layer 4
-    header: UDPPacket.Header = .{},
+    header: UDP.Header = .{},
 
     /// UDP Header
     pub const Header = packed struct(u64) {
@@ -390,25 +365,21 @@ pub const UDPPacket = packed struct{
             self.checksum = calcChecksum(udp_bytes);
         }
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.HEADER,
             .layer = 4,
         });
     };
 
-    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-        .kind = BFG.Kind.PACKET, 
-        .layer = 4, 
-        .name = "UDP_Packet" 
-    });
+    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.PACKET, .layer = 4, .name = "UDP_Packet" });
 };
 
 /// TCP Packet - [IETF RFC 9293](https://www.ietf.org/rfc/rfc9293.html)
-pub const TCPPacket = struct{
+pub const TCP = struct {
     // Layer 3
-    ip_header: IPPacket.Header = .{
+    ip_header: IP.Header = .{
         .version = 4,
-        .protocol = IPPacket.Header.Protocols.TCP,
+        .protocol = IP.Header.Protocols.TCP,
     },
     // Layer 4
     header: Header = .{},
@@ -416,7 +387,7 @@ pub const TCPPacket = struct{
     len: u16 = 20,
 
     /// TCP Header
-    pub const Header = packed struct{
+    pub const Header = packed struct {
         src_port: u16 = 0,
         dst_port: u16 = 0,
 
@@ -444,7 +415,7 @@ pub const TCPPacket = struct{
 
             pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
         };
-        pub const Flags = struct{
+        pub const Flags = struct {
             pub const CWR: u8 = @bitReverse(@as(u8, 0b10000000));
             pub const ECE: u8 = @bitReverse(@as(u8, 0b01000000));
             pub const URG: u8 = @bitReverse(@as(u8, 0b00100000));
@@ -455,29 +426,26 @@ pub const TCPPacket = struct{
             pub const FIN: u8 = @bitReverse(@as(u8, 0b00000001));
         };
 
-        
         /// Calculates the total Length (in Bytes) and the Checksum (from 16-bit words) of this UDP Header with the given payload.
-        pub fn calcLengthAndChecksum(self: *@This(), alloc: mem.Allocator, pseudo_header: ?[]const u8, opts_len: u16, payload: []const u8) !void {
-            const pseudo_hdr = pseudo_header orelse return error.MissingSegmentHeader;
-
+        pub fn calcLengthAndChecksum(self: *@This(), alloc: mem.Allocator, pseudo_header: []const u8, opts_len: u16, payload: []const u8) !void {
             self.data_offset = @as(u4, @intCast(@bitSizeOf(@This()) / 32)) + if (opts_len > 0) @as(u4, @truncate(opts_len / 4)) else 0;
+
             var tcp_hdr_bytes = try self.asNetBytesBFG(alloc);
+            defer alloc.free(tcp_hdr_bytes);
+
             const tcp_hdr_len: u16 = mem.nativeToBig(u16, @as(u16, @truncate(tcp_hdr_bytes.len)) + @as(u16, @truncate(payload.len)));
 
-            const tcp_bytes = try mem.concat(alloc, u8, &.{ pseudo_hdr, &@as([2]u8, @bitCast(tcp_hdr_len)), tcp_hdr_bytes[0..], payload });
+            const tcp_bytes = try mem.concat(alloc, u8, &.{ pseudo_header, &@as([2]u8, @bitCast(tcp_hdr_len)), tcp_hdr_bytes[0..], payload });
             defer alloc.free(tcp_bytes);
 
             self.checksum = calcChecksum(tcp_bytes);
         }
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.HEADER, 
-            .layer = 4 
-        });
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ .kind = BFG.Kind.HEADER, .layer = 4 });
     };
 
     /// TCP Option
-    pub const Option = struct{
+    pub const Option = struct {
         kind: u8 = 0,
         len: ?u8 = null,
         data: ?[]const u8 = null,
@@ -487,21 +455,21 @@ pub const TCPPacket = struct{
             if (byte_buf.len == 0) return error.EmptyByteBuffer;
             return switch (@as(OptionKinds.Enum(), @enumFromInt(byte_buf[0]))) {
                 .END_OF_OPTS, .NO_OP => .{ .kind = @bitCast(byte_buf[0]) },
-                else =>  .{
+                else => .{
                     .kind = @bitCast(byte_buf[0]),
                     .len = byte_buf[1],
-                    .data = byte_buf[2..(byte_buf[1] + (4 - (byte_buf[1] % 4 )))],
-                }
+                    .data = byte_buf[2..(byte_buf[1] + (4 - (byte_buf[1] % 4)))],
+                },
             };
         }
 
-        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-            .kind = BFG.Kind.OPTION, 
+        pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+            .kind = BFG.Kind.OPTION,
             .layer = 4,
         });
     };
     /// TCP Option Kinds
-    pub const OptionKinds = struct{
+    pub const OptionKinds = struct {
         pub const END_OF_OPTS: u8 = 0;
         pub const NO_OP: u8 = 1;
         pub const MAX_SEG_SIZE: u8 = 2;
@@ -513,37 +481,34 @@ pub const TCPPacket = struct{
     pub fn from(alloc: mem.Allocator, byte_buf: []const u8) !@This() {
         const hdr_end = @bitSizeOf(Header) / 8;
         if (byte_buf.len < hdr_end) return error.UnexpectedlySmallBuffer;
-        var size_buf: [@sizeOf(Header)]u8 = .{ 0 } ** @sizeOf(Header);
+        var size_buf: [@sizeOf(Header)]u8 = .{0} ** @sizeOf(Header);
         for (size_buf[0..hdr_end], byte_buf[0..hdr_end]) |*s, b| s.* = b;
         var hdr: Header = mem.bytesToValue(Header, size_buf[0..]);
         try hdr.toLSB();
         const tcp_end = hdr.data_offset * @as(u16, 4);
         return .{
             .header = hdr,
-            .options = 
-                if (hdr_end > 20) opts: {
-                    const opts_raw_buf = byte_buf[hdr_end..tcp_end];
-                    var opts_list = std.ArrayList(Option).init(alloc);
-                    var idx: u16 = 0;
-                    while (idx < opts_raw_buf.len) {
-                        const opt = try Option.from(opts_raw_buf[idx..]);
-                        idx += @bitSizeOf(@TypeOf(opt));
-                        try opts_list.append(opt);
-                    }
-                    break :opts try opts_list.toOwnedSlice();
+            .options = if (hdr_end > 20) opts: {
+                const opts_raw_buf = byte_buf[hdr_end..tcp_end];
+                var opts_list = std.ArrayList(Option).init(alloc);
+                var idx: u16 = 0;
+                while (idx < opts_raw_buf.len) {
+                    const opt = try Option.from(opts_raw_buf[idx..]);
+                    idx += @bitSizeOf(@TypeOf(opt));
+                    try opts_list.append(opt);
                 }
-                else null,
+                break :opts try opts_list.toOwnedSlice();
+            } else null,
             .len = tcp_end,
         };
     }
 
-    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{ 
-        .kind = BFG.Kind.PACKET, 
-        .layer = 4, 
-        .name = "TCP_Packet", 
+    pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{
+        .kind = BFG.Kind.PACKET,
+        .layer = 4,
+        .name = "TCP_Packet",
     });
 };
-
 
 // Calculate the Checksum from the given bytes. TODO - Handle bit carryovers
 pub fn calcChecksum(bytes: []u8) u16 {

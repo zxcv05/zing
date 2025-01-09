@@ -23,14 +23,14 @@ const Datagrams = lib.Datagrams;
 const BUF_SIZE = 4096;
 
 /// A Thread Safe, Array List based Buffer for Interactions.
-pub const InteractBuffer = struct{
+pub const InteractBuffer = struct {
     /// The ArrayList containing all Datagrams.
     _list: std.ArrayList(Datagrams.Full),
     /// A Mutex Lock for this Interaction Buffer.
     _mutex: std.Thread.Mutex = std.Thread.Mutex{},
 
     /// Initialize a new Interaction Buffer with the provided Allocator (`alloc`).
-    pub fn init(alloc: mem.Allocator) @This(){
+    pub fn init(alloc: mem.Allocator) @This() {
         return .{
             ._list = std.ArrayList(Datagrams.Full).init(alloc),
         };
@@ -70,14 +70,14 @@ pub fn InteractWriter(comptime WriterT: type) type {
         }
     }
 
-    return struct{
+    return struct {
         /// The underlying Writer.
         writer: WriterT,
         /// The Read/Write Lock.
         rw_lock: std.Thread.RwLock = std.Thread.RwLock{},
 
         /// Initialize a new Interaction Writer.
-        pub fn init(writer: WriterT) @This(){
+        pub fn init(writer: WriterT) @This() {
             return .{
                 .writer = writer,
             };
@@ -88,24 +88,24 @@ pub fn InteractWriter(comptime WriterT: type) type {
             self.*.rw_lock.lock();
             defer self.*.rw_lock.unlock();
             return self.*.writer.write(bytes);
-        } 
+        }
         /// Write All
         pub fn writeAll(self: *@This(), bytes: []const u8) !void {
             self.*.rw_lock.lock();
             defer self.*.rw_lock.unlock();
             return self.*.writer.writeAll(bytes);
-        } 
-        /// Print 
+        }
+        /// Print
         pub fn print(self: *@This(), comptime format: []const u8, args: anytype) !void {
             self.*.rw_lock.lock();
             defer self.*.rw_lock.unlock();
             return self.*.writer.print(format, args);
-        } 
+        }
     };
 }
 
 /// Interaction Config.
-pub const InteractConfig = struct{
+pub const InteractConfig = struct {
     /// Max number of Datagrams to be processed for this Interaction.
     /// Setting this to 0 will allow for infinite loops
     recv_dgs_max: u32 = 10,
@@ -122,38 +122,32 @@ pub const InteractConfig = struct{
 
 /// Interaction Functions.
 /// **Comptime Only!**
-pub const InteractFunctions = struct{
+pub const InteractFunctions = struct {
     /// A Function to be called at the Start of an Interaction.
     ///
     /// Parameters:
     /// 1. Allocator
     /// 2. Context
-    start_fn: ?*const fn(mem.Allocator, anytype) anyerror!void = null,
-    
+    start_fn: ?*const fn (mem.Allocator, anytype) anyerror!void = null,
+
     /// A Function to be called in Reaction to each Datagram received during an Interaction.
     ///
     /// Parameters:
     /// 1. Allocator
     /// 2. Context - Must be a Nullable Pointer to a Type (`*T`).
     /// 3. Received Datagram
-    react_fn: ?*const fn(mem.Allocator, anytype, Datagrams.Full) anyerror!void = null,
+    react_fn: ?*const fn (mem.Allocator, anytype, Datagrams.Full) anyerror!void = null,
 
     /// A Function to be called at the End of an Interaction.
     ///
     /// Parameters:
     /// 1. Allocator
     /// 2. Context
-    end_fn: ?*const fn(mem.Allocator, anytype) anyerror!void = null,
+    end_fn: ?*const fn (mem.Allocator, anytype) anyerror!void = null,
 };
 
 /// Interact with a Network using the provided Allocator (`alloc`), Function Context (`fn_ctx`), and Interaction Config (`config`).
-pub fn interact(
-    alloc: mem.Allocator, 
-    fn_ctx: anytype, 
-    sock_config: conn.IFSocket.IFSocketInitConfig, 
-    ia_config: InteractConfig, 
-    comptime ia_fns: InteractFunctions
-) !void {
+pub fn interact(alloc: mem.Allocator, fn_ctx: anytype, sock_config: conn.IFSocket.IFSocketInitConfig, ia_config: InteractConfig, comptime ia_fns: InteractFunctions) !void {
     // Setup Sockets
     const recv_sock = try conn.IFSocket.init(sock_config);
     defer recv_sock.close();
@@ -165,35 +159,24 @@ pub fn interact(
     if (ia_config.multithreaded) {
         log.debug("Running Multi-Threaded.", .{});
         var recv_buf = InteractBuffer.init(alloc);
-        var recv_thread = try std.Thread.spawn(
-            .{ .allocator = alloc },
-            recv.recvDatagramThread,
-            .{
-                alloc,
-                recv_sock,
-                &recv_buf,
-                ia_config.recv_dgs_max,
-            }
-        );
+        var recv_thread = try std.Thread.spawn(.{ .allocator = alloc }, recv.recvDatagramThread, .{
+            alloc,
+            recv_sock,
+            &recv_buf,
+            ia_config.recv_dgs_max,
+        });
         defer recv_thread.join();
 
         // Run the Start Function (if applicable)
         time.sleep(ia_config.start_fn_delay);
         if (ia_fns.start_fn) |startFn| try startFn(alloc, fn_ctx);
 
-        while (
-            if (!infinite_dgs) dg_count < ia_config.recv_dgs_max
-            else true
-        ) {
+        while (if (!infinite_dgs) dg_count < ia_config.recv_dgs_max else true) {
             if (ia_fns.react_fn) |reactFn| {
                 if (recv_buf.pop()) |datagram| {
                     //log.debug("Datagram Buffer Len: {d}", .{ recv_buf.list.items.len });
                     //log.debug("Spawning Thread.", .{});
-                    var thread = try std.Thread.spawn(
-                        .{ .allocator = alloc },
-                        reactFn.*,
-                        .{ alloc, fn_ctx, datagram }
-                    );
+                    var thread = try std.Thread.spawn(.{ .allocator = alloc }, reactFn.*, .{ alloc, fn_ctx, datagram });
                     thread.detach();
                     dg_count += 1;
                 }
@@ -206,13 +189,9 @@ pub fn interact(
         if (ia_fns.start_fn) |startFn| try startFn(alloc, fn_ctx);
 
         log.debug("Running Single-Threaded.", .{});
-        while (
-            if (!infinite_dgs) dg_count < ia_config.recv_dgs_max
-            else true
-        ) : (dg_count += 1) {
+        while (if (!infinite_dgs) dg_count < ia_config.recv_dgs_max else true) : (dg_count += 1) {
             const datagram = recv.recvDatagram(alloc, recv_sock) catch |err| switch (err) {
-                error.UnexpectedlySmallBuffer, 
-                error.UnimplementedType => continue,
+                error.UnexpectedlySmallBuffer, error.UnimplementedType => continue,
                 else => return err,
             };
             if (ia_fns.react_fn) |reactFn| try reactFn(alloc, fn_ctx, datagram);
@@ -307,7 +286,7 @@ pub fn interact(
 //    if (sub_field_names.len == 1) {
 //        const sub_field = @field(FieldT, sub_field_names[0]);
 //        const SubFieldT = @TypeOf(sub_field);
-//        const cond_kw: InteractExprKeywords.Condition, 
+//        const cond_kw: InteractExprKeywords.Condition,
 //        const cond_val: SubFieldT =
 //            condition: {
 //                var tokens = mem.split(u8, expr, ' ');
@@ -316,10 +295,10 @@ pub fn interact(
 //                    meta.stringToEnum(InteractExprKeywords.Condition, tokens.first()) orelse return error.UnknownConditionKeyword,
 //                    switch (@typeInfo(SubFieldT)) {
 //                        .Struct, .Union => try SubFieldT.fromStr(val_str),
-//                        .Int => try fmt.parseInt(SubFieldT, val_str, 0),
-//                        .Bool => ascii.eqlIgnoreCase(val_str, "true"),
-//                        .Pointer => |ptr| slice: {
-//                            if (ptr.child != u8) return error.PointerMustBeStringSlice;
+//                        .int => try fmt.parseInt(SubFieldT, val_str, 0),
+//                        .bool => ascii.eqlIgnoreCase(val_str, "true"),
+//                        .pointer => |ptr| slice: {
+//                            if (ptr.child != u8) return error.pointerMustBeStringSlice;
 //                            break :slice val_str;
 //                        },
 //                        inline else => error.UnsupportedType,

@@ -24,33 +24,32 @@ const Frames = lib.Frames;
 const Packets = lib.Packets;
 
 /// Scan Protocols.
-pub const ScanProtocols = enum{
+pub const ScanProtocols = enum {
     ARP,
     ICMP,
     TCP,
 };
 
 /// Scan Group. A group of Network Addresses and Booleans for Scanning a single target.
-pub const ScanGroup = struct{
+pub const ScanGroup = struct {
     mac: ?Addresses.MAC = null,
     ip: Addresses.IPv4,
     ip_scanned: bool = false,
     port_map: ?PortMap = null,
-        
+
     /// A Map of Ports to be checked during Scanning.
-    pub const PortMap = std.ArrayHashMap(
-        u16,
-        bool,
-        struct{
-            pub fn hash(_: @This(), port: u16) u32 { return @intCast(port); }
-            pub fn eql(_: @This(), this: u16, that: u16, _: usize) bool { return this == that; }
-        },
-        false
-    );
+    pub const PortMap = std.ArrayHashMap(u16, bool, struct {
+        pub fn hash(_: @This(), port: u16) u32 {
+            return @intCast(port);
+        }
+        pub fn eql(_: @This(), this: u16, that: u16, _: usize) bool {
+            return this == that;
+        }
+    }, false);
 };
 
 /// Scan List. A Thread-Safe Multi Array List of Scan Groups for use during Scanning.
-pub const ScanList = struct{
+pub const ScanList = struct {
     _list: std.MultiArrayList(ScanGroup) = std.MultiArrayList(ScanGroup){},
     _alloc: mem.Allocator,
     _mutex: std.Thread.Mutex = std.Thread.Mutex{},
@@ -88,7 +87,7 @@ pub const ScanList = struct{
 };
 
 /// Base Config for ScanConfig
-const BaseScanConfig = struct{
+const BaseScanConfig = struct {
     /// Ports to Scan (TCP Only).
     /// This can be given individually, as a comma-separated list, or as a '-' separated range.
     ports: ?[]const u8 = "22,80",
@@ -104,16 +103,15 @@ const BaseScanConfig = struct{
     /// The path to a Datagram File that will be sent for each Scan.
     datagram_file: ?[]const u8 = null,
 
-    /// The IP Address(es) to Scan. 
+    /// The IP Address(es) to Scan.
     /// This can be given individually, as a comma-separated list, as a hyphen-separated range (on any one octet), or as a subnet in CIDR notation.
     scan_addr: []const u8,
 };
 /// Config for Scanning a Network.
 pub const ScanConfig = utils.MergedStruct(&.{ rec.RecordConfig, BaseScanConfig });
 
-
 /// Base Scan Context.
-const BaseScanContext = struct{
+const BaseScanContext = struct {
     scan_proto: ScanProtocols = .ICMP,
     //scan_ips: ?[]Addresses.IPv4 = null,
     //scan_ports: ?[]u16 = null,
@@ -123,7 +121,6 @@ const BaseScanContext = struct{
 };
 /// Scan Context
 pub const ScanContext = utils.MergedStruct(&.{ rec.RecordContext, BaseScanContext });
-
 
 /// Scan Datagrams.
 pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
@@ -142,105 +139,99 @@ pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
         \\ - IPv4: {s}
         \\
         \\
-        , .{
-            try src_mac.?.toStr(alloc),
-            try src_ip.toStr(alloc),
-        }
-    );
-    
-    const out_dg: Datagrams.Full, 
-    const scan_ips: []Addresses.IPv4,
-    const scan_ports: ?[]u16 =
+    , .{
+        try src_mac.?.toStr(alloc),
+        try src_ip.toStr(alloc),
+    });
+
+    const out_dg: Datagrams.Full, const scan_ips: []Addresses.IPv4, const scan_ports: ?[]u16 =
         ctxConf: {
-            switch (config.proto) {
-                .ARP => {
-                    var out_dg = 
-                        if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file)
-                        else Datagrams.Full{
-                            .l2_header = .{ .eth = .{
-                                .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
-                                .ether_type = Frames.EthFrame.Header.EtherTypes.ARP,
-                            } },
-                            .l3_header = .{ .arp = .{
-                                .sender_hw_addr = try send_sock.getMAC(),
-                                .sender_proto_addr = src_ip,
-                            } },
-                            .l4_header = null,
-                            .payload = "",
-                        };
+        switch (config.proto) {
+            .ARP => {
+                var out_dg =
+                    if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file) else Datagrams.Full{
+                    .l2_header = .{ .eth = .{
+                        .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
+                        .ether_type = Frames.EthFrame.Header.EtherTypes.ARP,
+                    } },
+                    .l3_header = .{ .arp = .{
+                        .sender_hw_addr = try send_sock.getMAC(),
+                        .sender_proto_addr = src_ip,
+                    } },
+                    .l4_header = null,
+                    .payload = "",
+                };
 
-                    if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
-                    break :ctxConf .{ 
-                        out_dg,
-                        Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
-                            log.err("ARP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
-                            return error.InvalidIPv4;    
-                        },
-                        null,
-                    };
-                },
-                .ICMP => {
-                    var out_dg = 
-                        if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file)
-                        else Datagrams.Full{
-                            .l2_header = .{ .eth = .{
-                                .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
-                            } },
-                            .l3_header = .{ .ip = .{
-                                .src_ip_addr = src_ip,
-                                .protocol = Packets.IPPacket.Header.Protocols.ICMP,
-                            } },
-                            .l4_header = .{ .icmp = .{
-                                .icmp_type = Packets.ICMPPacket.Header.Types.ECHO,
-                                .id = 42069,
-                                .seq_num = 1,
-                            } },
-                            .payload = "abcdefghijklmnopqrstuvwabcdefghi",
-                        };
+                if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
+                break :ctxConf .{
+                    out_dg,
+                    Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
+                        log.err("ARP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
+                        return error.InvalidIPv4;
+                    },
+                    null,
+                };
+            },
+            .ICMP => {
+                var out_dg =
+                    if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file) else Datagrams.Full{
+                    .l2_header = .{ .eth = .{
+                        .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
+                    } },
+                    .l3_header = .{ .ip = .{
+                        .src_ip_addr = src_ip,
+                        .protocol = Packets.IP.Header.Protocols.ICMP,
+                    } },
+                    .l4_header = .{ .icmp = .{
+                        .icmp_type = Packets.ICMP.Header.Types.ECHO,
+                        .id = 42069,
+                        .seq_num = 1,
+                    } },
+                    .payload = "abcdefghijklmnopqrstuvwabcdefghi",
+                };
 
-                    if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
-                    break :ctxConf .{ 
-                        out_dg,
-                        Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
-                            log.err("ICMP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
-                            return error.InvalidIPv4;    
-                        },
-                        null,
-                    };
-                },
-                .TCP => {
-                    var out_dg = 
-                        if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file)
-                        else Datagrams.Full{
-                            .l2_header = .{ .eth = .{
-                                .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
-                            } },
-                            .l3_header = .{ .ip = .{
-                                .src_ip_addr = src_ip,
-                                .protocol = Packets.IPPacket.Header.Protocols.TCP,
-                            } },
-                            .l4_header = .{ .tcp = .{
-                                .src_port = 54321,
-                                .flags = @bitCast(Packets.TCPPacket.Header.Flags.SYN),
-                            } },
-                            .payload = "",
-                        };
+                if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
+                break :ctxConf .{
+                    out_dg,
+                    Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
+                        log.err("ICMP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
+                        return error.InvalidIPv4;
+                    },
+                    null,
+                };
+            },
+            .TCP => {
+                var out_dg =
+                    if (config.datagram_file) |dg_file| try craft.decodeDatagram(alloc, dg_file) else Datagrams.Full{
+                    .l2_header = .{ .eth = .{
+                        .dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF"),
+                    } },
+                    .l3_header = .{ .ip = .{
+                        .src_ip_addr = src_ip,
+                        .protocol = Packets.IP.Header.Protocols.TCP,
+                    } },
+                    .l4_header = .{ .tcp = .{
+                        .src_port = 54321,
+                        .flags = @bitCast(Packets.TCP.Header.Flags.SYN),
+                    } },
+                    .payload = "",
+                };
 
-                    if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
-                    break :ctxConf .{ 
-                        out_dg,
-                        Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
-                            log.err("TCP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
-                            return error.InvalidIPv4;    
-                        },
-                        Addresses.Port.sliceFromStr(alloc, config.ports orelse "") catch {
-                            log.err("TCP Scans require a valid Port, Port Range, or Port List.", .{});
-                            return error.InvalidTCP;
-                        },
-                    };
-                },
-            }
-        };
+                if (src_mac) |mac| out_dg.l2_header.eth.src_mac_addr = mac;
+                break :ctxConf .{
+                    out_dg,
+                    Addresses.IPv4.sliceFromStr(alloc, config.scan_addr) catch {
+                        log.err("TCP Scans require a valid IPv4 Address, IPv4 Address List, or IPv4 Subnet.", .{});
+                        return error.InvalidIPv4;
+                    },
+                    Addresses.Port.sliceFromStr(alloc, config.ports orelse "") catch {
+                        log.err("TCP Scans require a valid Port, Port Range, or Port List.", .{});
+                        return error.InvalidTCP;
+                    },
+                };
+            },
+        }
+    };
 
     var scan_list = ScanList.init(alloc);
     for (scan_ips) |ip| {
@@ -251,28 +242,26 @@ pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
                     var map = ScanGroup.PortMap.init(alloc);
                     for (ports) |port| try map.put(port, false);
                     break :portMap map;
-                }
-                else break :portMap null;
+                } else break :portMap null;
             },
         });
     }
     defer {
-        //for (scan_list.use().items(.port_map)) |map| alloc.free(map orelse continue); 
+        //for (scan_list.use().items(.port_map)) |map| alloc.free(map orelse continue);
         scan_list.deinit();
     }
 
     // Set up File Recording if applicable.
     var cwd = fs.cwd();
-    var record_file = 
-        if (config.filename) |filename| recFile: {
-            const format = @tagName(config.format);
-            const full_name = 
-                if (ascii.endsWithIgnoreCase(filename, format)) filename
-                else try fmt.allocPrint(alloc, "{s}.{s}", .{ filename, format });
-            defer alloc.free(full_name);
-            break :recFile try cwd.createFile(full_name, .{ .truncate = false });
-        }
-        else null;
+    var record_file =
+        if (config.filename) |filename|
+    recFile: {
+        const format = @tagName(config.format);
+        const full_name =
+            if (ascii.endsWithIgnoreCase(filename, format)) filename else try fmt.allocPrint(alloc, "{s}.{s}", .{ filename, format });
+        defer alloc.free(full_name);
+        break :recFile try cwd.createFile(full_name, .{ .truncate = false });
+    } else null;
     defer if (record_file) |file| file.close();
     const record_writer = if (record_file) |r_file| ia.InteractWriter(io.Writer(fs.File, os.WriteError, fs.File.write)).init(r_file.writer()) else null;
 
@@ -293,7 +282,7 @@ pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
 
     // Start Scan
     try ia.interact(
-        alloc, 
+        alloc,
         &scan_ctx,
         .{ .if_name = config.if_name },
         .{
@@ -302,7 +291,7 @@ pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
         },
         .{
             .start_fn = scanStart,
-            .react_fn = scanReact, 
+            .react_fn = scanReact,
         },
     );
 }
@@ -311,7 +300,7 @@ pub fn scan(alloc: mem.Allocator, config: ScanConfig) !void {
 fn scanStart(alloc: mem.Allocator, ctx: anytype) !void {
     if (@TypeOf(ctx) != *ScanContext) @compileError("This Start Function requires a Context of Type `ScanContext`.");
 
-    log.info("Starting {s} scan...", .{ @tagName(ctx.scan_proto) });
+    log.info("Starting {s} scan...", .{@tagName(ctx.scan_proto)});
     const if_ip = try ctx.send_sock.getIPv4();
     const if_ip_str = try if_ip.toStr(alloc);
     defer alloc.free(if_ip_str);
@@ -325,39 +314,36 @@ fn scanStart(alloc: mem.Allocator, ctx: anytype) !void {
         log.info("Checking subnet equality of Interface IP '{s}' and Target IP '{s}'", .{ if_ip_str, ip_str });
         if (!checkSubnet: {
             var same = true;
-            for (
-                ip.toByteArray()[0..2], 
-                if_ip.toByteArray()[0..2]
-            ) |a, b| same = same and a == b;
+            for (ip.toByteArray()[0..2], if_ip.toByteArray()[0..2]) |a, b| same = same and a == b;
             break :checkSubnet same;
         }) {
             switch (ctx.scan_proto) {
                 .ARP => {
-                    log.err("The requested IP `{s}` for this ARP Request is outside of the local network.", .{ ip_str });
+                    log.err("The requested IP `{s}` for this ARP Request is outside of the local network.", .{ip_str});
                     return error.ARPOutsideLocalNetwork;
                 },
                 .ICMP => {
-                    log.info("Pinging {s}...", .{ ip_str });
+                    log.info("Pinging {s}...", .{ip_str});
                     ctx.out_dg.l2_header.eth.dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF");
                     ctx.out_dg.l3_header.?.ip.dst_ip_addr = ip;
                     try send.sendDatagram(alloc, ctx.out_dg, ctx.send_sock);
-                    log.debug("Ping Request Packet:\n\n{s}", .{ ctx.out_dg });
+                    log.debug("Ping Request Packet:\n\n{s}", .{ctx.out_dg});
                 },
                 .TCP => {
                     ctx.out_dg.l2_header.eth.dst_mac_addr = try Addresses.MAC.fromStr("FF:FF:FF:FF:FF:FF");
                     ctx.out_dg.l3_header.?.ip.dst_ip_addr = ip;
-                    log.info("Sending TCP Packet to {s}...", .{ ip_str });
+                    log.info("Sending TCP Packet to {s}...", .{ip_str});
                     for (port_map.?.keys()) |port| {
                         log.info("- {s}:{d}...", .{ ip_str, port });
                         ctx.out_dg.l4_header.?.tcp.dst_port = port;
                         try send.sendDatagram(alloc, ctx.out_dg, ctx.send_sock);
                     }
-                    log.debug("TCP Packet:\n\n{s}", .{ ctx.out_dg });
-                }
+                    log.debug("TCP Packet:\n\n{s}", .{ctx.out_dg});
+                },
             }
             continue;
         }
-        log.info("Sending ARP Request for {s}...", .{ ip_str });
+        log.info("Sending ARP Request for {s}...", .{ip_str});
         const arp_dg = Datagrams.Full{
             .l2_header = .{ .eth = .{
                 .src_mac_addr = ctx.out_dg.l2_header.eth.src_mac_addr,
@@ -366,18 +352,17 @@ fn scanStart(alloc: mem.Allocator, ctx: anytype) !void {
             } },
             .l3_header = .{ .arp = .{
                 .sender_hw_addr = ctx.out_dg.l2_header.eth.src_mac_addr,
-                .sender_proto_addr =
-                   switch (ctx.out_dg.l3_header.?) {
-                       .arp => ctx.out_dg.l3_header.?.arp.sender_proto_addr,
-                       else => ctx.out_dg.l3_header.?.ip.src_ip_addr,
-                   },
+                .sender_proto_addr = switch (ctx.out_dg.l3_header.?) {
+                    .arp => ctx.out_dg.l3_header.?.arp.sender_proto_addr,
+                    else => ctx.out_dg.l3_header.?.ip.src_ip_addr,
+                },
                 .tgt_proto_addr = ip,
             } },
             .l4_header = null,
             .payload = "",
         };
         try send.sendDatagram(alloc, arp_dg, ctx.send_sock);
-        log.debug("ARP Request Packet:\n\n{s}", .{ arp_dg });
+        log.debug("ARP Request Packet:\n\n{s}", .{arp_dg});
     }
 }
 
@@ -389,27 +374,23 @@ fn scanReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !void
 
     const l3_hdr = datagram.l3_header orelse return;
     handleARP: {
-        const arp: Packets.ARPPacket.Header = if (l3_hdr == .arp) l3_hdr.arp else break :handleARP;
+        const arp: Packets.ARP.Header = if (l3_hdr == .arp) l3_hdr.arp else break :handleARP;
         const op_code = arp.op_code; //mem.bigToNative(u16, arp.op_code);
-        if (op_code != Packets.ARPPacket.Header.OpCodes.REPLY) break :handleARP;
+        if (op_code != Packets.ARP.Header.OpCodes.REPLY) break :handleARP;
         const reply_ip = arp.sender_proto_addr;
         const reply_mac = arp.sender_hw_addr;
         var list = ctx.scan_list.use();
         defer ctx.scan_list.finish();
-        const tgt_ip, 
-        const tgt_mac,
-        const tgt_ports
-            = for (list.items(.ip), list.items(.mac), list.items(.port_map)) |ip, *mac, port_map| {
-                if (@as(u32, @bitCast(ip)) == @as(u32, @bitCast(reply_ip))) {
-                    if (mac.*) |_| return;
-                    mac.* = reply_mac;
-                    break .{ ip, reply_mac, port_map };
-                }
-            } 
-            else return;
+        const tgt_ip, const tgt_mac, const tgt_ports = for (list.items(.ip), list.items(.mac), list.items(.port_map)) |ip, *mac, port_map| {
+            if (@as(u32, @bitCast(ip)) == @as(u32, @bitCast(reply_ip))) {
+                if (mac.*) |_| return;
+                mac.* = reply_mac;
+                break .{ ip, reply_mac, port_map };
+            }
+        } else return;
         const mac_str, const ip_str = .{ try tgt_mac.toStr(alloc), try tgt_ip.toStr(alloc) };
-        defer alloc.free(mac_str); 
-        defer alloc.free(ip_str); 
+        defer alloc.free(mac_str);
+        defer alloc.free(ip_str);
         switch (ctx.scan_proto) {
             .ARP => {
                 log.info("ARP Reply from {s} for {s}!", .{ mac_str, ip_str });
@@ -420,30 +401,30 @@ fn scanReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !void
                 ctx.out_dg.l2_header.eth.dst_mac_addr = tgt_mac;
                 ctx.out_dg.l3_header.?.ip.dst_ip_addr = tgt_ip;
                 try send.sendDatagram(alloc, ctx.out_dg, ctx.send_sock);
-                log.debug("Ping Request Packet:\n\n{s}", .{ ctx.out_dg });
+                log.debug("Ping Request Packet:\n\n{s}", .{ctx.out_dg});
             },
             .TCP => {
                 ctx.out_dg.l2_header.eth.dst_mac_addr = tgt_mac;
                 ctx.out_dg.l3_header.?.ip.dst_ip_addr = tgt_ip;
-                log.info("ARP Reply from {s}. Sending TCP Packet to:", .{ mac_str });
+                log.info("ARP Reply from {s}. Sending TCP Packet to:", .{mac_str});
                 for (tgt_ports.?.keys()) |port| {
                     log.info("- {s}:{d}...", .{ ip_str, port });
                     ctx.out_dg.l4_header.?.tcp.dst_port = port;
                     try send.sendDatagram(alloc, ctx.out_dg, ctx.send_sock);
                 }
-                log.debug("TCP Packet:\n\n{s}", .{ ctx.out_dg });
-            }
+                log.debug("TCP Packet:\n\n{s}", .{ctx.out_dg});
+            },
         }
     }
-    
+
     if (l3_hdr == .ip) {
         const resp_ip = l3_hdr.ip.src_ip_addr;
         const resp_ip_str = try resp_ip.toStr(alloc);
         defer alloc.free(resp_ip_str);
         switch (ctx.scan_proto) {
             .ICMP => {
-                const l4_hdr = datagram.l4_header orelse return; 
-                if (l4_hdr != .icmp) return; 
+                const l4_hdr = datagram.l4_header orelse return;
+                if (l4_hdr != .icmp) return;
                 var list = ctx.scan_list.use();
                 defer ctx.scan_list.finish();
                 for (list.items(.ip), list.items(.ip_scanned)) |ip, *scanned| {
@@ -457,12 +438,10 @@ fn scanReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !void
                 }
             },
             .TCP => {
-                const l4_hdr = datagram.l4_header orelse return; 
-                if (
-                    l4_hdr != .tcp or 
-                    @as(u32, @bitCast(l3_hdr.ip.dst_ip_addr)) != @as(u32, @bitCast(ctx.out_dg.l3_header.?.ip.src_ip_addr))
-                ) return; 
-                const resp_port = l4_hdr.tcp.src_port; 
+                const l4_hdr = datagram.l4_header orelse return;
+                if (l4_hdr != .tcp or
+                    @as(u32, @bitCast(l3_hdr.ip.dst_ip_addr)) != @as(u32, @bitCast(ctx.out_dg.l3_header.?.ip.src_ip_addr))) return;
+                const resp_port = l4_hdr.tcp.src_port;
                 var list = ctx.scan_list.use();
                 defer ctx.scan_list.finish();
                 for (list.items(.ip), list.items(.ip_scanned), list.items(.port_map)) |ip, *scanned, *port_map| {
@@ -477,18 +456,13 @@ fn scanReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !void
                         }
                         var flagsList = std.ArrayList(u8).init(alloc);
                         defer flagsList.deinit();
-                        inline for (meta.fields(Packets.TCPPacket.Header.Flag)) |flag| {
-                            if (@field(l4_hdr.tcp.flags, flag.name)) 
-                                try flagsList.writer().print("{s}|", .{ flag.name });
+                        inline for (meta.fields(Packets.TCP.Header.Flag)) |flag| {
+                            if (@field(l4_hdr.tcp.flags, flag.name))
+                                try flagsList.writer().print("{s}|", .{flag.name});
                         }
                         const resp_flags = try flagsList.toOwnedSlice();
                         defer alloc.free(resp_flags);
-                        log.info("TCP response from '{s}:{d}'. Flags: '|{s}'. Total responses: {d}", .{ 
-                            resp_ip_str, 
-                            resp_port,
-                            resp_flags,
-                            ctx.count 
-                        });
+                        log.info("TCP response from '{s}:{d}'. Flags: '|{s}'. Total responses: {d}", .{ resp_ip_str, resp_port, resp_flags, ctx.count });
                         if (ctx.enable_print) try stdout.print("{s}\n{s}", .{ datagram, ctx.dg_sep });
                         all_ports = all_ports and p_scanned.*;
                         record = true;
@@ -504,11 +478,11 @@ fn scanReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !void
     if (ctx.record_file.*) |file| {
         try file.seekFromEnd(0);
         try craft.encodeDatagram(alloc, datagram, ctx.record_writer.?, ctx.encode_fmt);
-        if (ctx.encode_fmt == .txt) try ctx.record_writer.?.print("{s}", .{ ctx.dg_sep });
+        if (ctx.encode_fmt == .txt) try ctx.record_writer.?.print("{s}", .{ctx.dg_sep});
     }
     if (ctx.enable_print) {
         try craft.encodeDatagram(alloc, datagram, stdout, ctx.encode_fmt);
-        if (ctx.encode_fmt == .txt) try stdout.print("{s}", .{ ctx.dg_sep });
+        if (ctx.encode_fmt == .txt) try stdout.print("{s}", .{ctx.dg_sep});
     }
-    log.debug("Recorded Datagram #{d}.", .{ ctx.count });
+    log.debug("Recorded Datagram #{d}.", .{ctx.count});
 }

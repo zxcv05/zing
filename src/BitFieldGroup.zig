@@ -9,8 +9,8 @@ const math = std.math;
 const mem = std.mem;
 const meta = std.meta;
 
-/// Config for a Bit Field Group Implementation 
-const ImplBitFieldGroupConfig = struct{
+/// Config for a Bit Field Group Implementation
+const ImplBitFieldGroupConfig = struct {
     kind: Kind = Kind.BASIC,
     layer: u3 = 7,
     name: []const u8 = "",
@@ -19,11 +19,11 @@ const ImplBitFieldGroupConfig = struct{
 /// Bit Field Group Implementation.
 /// Add to a Struct with `usingnamespace`.
 pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGroupConfig) type {
-    return struct{
+    return struct {
         pub const bfg_kind: Kind = impl_config.kind;
         pub const bfg_layer: u3 = impl_config.layer;
         pub const bfg_name: []const u8 = impl_config.name;
-            
+
         /// Returns this BitFieldGroup as a Byte Array Slice based on its bit-width (not its byte-width, which can differ for packed structs).
         pub fn asBytes(self: *T, alloc: mem.Allocator) ![]u8 {
             return try alloc.dupe(u8, mem.asBytes(self)[0..(@bitSizeOf(T) / 8)]);
@@ -33,11 +33,10 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
         pub fn asNetBytesBFG(self: *T, alloc: mem.Allocator) ![]u8 {
             if (cpu_endian == .little) {
                 const be_bits = switch (@typeInfo(T)) {
-                    .Pointer => |ptr| ptrSelf: {
-                        if (ptr.child == u8) return try alloc.dupe(u8, self[0..])
-                        else break :ptrSelf try toBitsMSB(self.*);
+                    .pointer => |ptr| ptrSelf: {
+                        if (ptr.child == u8) return try alloc.dupe(u8, self[0..]) else break :ptrSelf try toBitsMSB(self.*);
                     },
-                    .Optional => try toBitsMSB(self orelse return &.{}),
+                    .optional => try toBitsMSB(self orelse return &.{}),
                     else => try toBitsMSB(self.*),
                 };
                 //var be_bits = try toBitsMSB(bits.*);
@@ -45,7 +44,7 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
                 var be_buf: [@bitSizeOf(BEBitsT) / 8]u8 = undefined;
                 mem.writeInt(BEBitsT, be_buf[0..], be_bits, .big);
                 return try alloc.dupe(u8, be_buf[0..]);
-            } 
+            }
             return self.asBytes(alloc); // TODO - change this to take the bits in LSB order
         }
 
@@ -61,10 +60,10 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
             //            else if (@hasDecl(field.type, "toLSB")) try field_self.toLSB()
             //            else field_self.* = @bitCast(mem.bigToNative(try toBitsMSB(field_self.*)));
             //        },
-            //        .Pointer => |ptr| ptrSelf: {
+            //        .pointer => |ptr| ptrSelf: {
             //            if (ptr.child != u8) toBitsMSB(self.*);
             //        },
-            //        .Optional => try toBitsMSB(self orelse return &.{}),
+            //        .optional => try toBitsMSB(self orelse return &.{}),
             //        inline else => field_self.* = @bitCast(mem.bigToNative(try toBitsMSB(field_self.*))),
             //    }
             //}
@@ -80,7 +79,7 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
         pub fn formatToText(self: *const T, writer: anytype, fmt_config: FormatToTextConfig) !FormatToTextConfig {
             var config = fmt_config;
             if (config.add_bit_ruler) {
-                try writer.print("{s}", .{ FormatToTextSeparators.bit_ruler_bin });
+                try writer.print("{s}", .{FormatToTextSeparators.bit_ruler_bin});
                 config.add_bit_ruler = false;
             }
             if (!config.add_bitfield_title) {
@@ -114,37 +113,39 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
             } else config._depth -= 1;
             return config;
         }
-        
+
         /// Recursive Function for Field Formatting
         fn fmtFieldRaw(self: *const T, field_raw: anytype, field_name: []const u8, writer: anytype, conf: FormatToTextConfig) !?FormatToTextConfig {
             var config = conf;
             const FieldT = @TypeOf(field_raw);
             const field_info = @typeInfo(FieldT);
             switch (field_info) {
-                .Struct => config = try fmtStruct(@constCast(&field_raw), writer, config),
-                .Union => {
+                .@"struct" => config = try fmtStruct(@constCast(&field_raw), writer, config),
+                .@"union" => {
                     switch (meta.activeTag(field_raw)) {
-                        inline else => |tag| config = try fmtStruct(@constCast(&@field(field_raw, @tagName(tag))), writer, config)
+                        inline else => |tag| config = try fmtStruct(@constCast(&@field(field_raw, @tagName(tag))), writer, config),
                     }
                 },
-                .Pointer => |ptr| { //TODO Properly add support for Arrays?
+                .pointer => |ptr| { //TODO Properly add support for Arrays?
                     if (ptr.child != u8) {
                         if (!meta.hasFn(ptr.child, "formatToText")) return null;
                         switch (ptr.size) {
                             .One => config = try field_raw.*.formatToText(writer, config),
-                            .Slice, .Many => { for (field_raw) |*elm| config = try elm.*.formatToText(writer, config); },
+                            .Slice, .Many => {
+                                for (field_raw) |*elm| config = try elm.*.formatToText(writer, config);
+                            },
                             else => return null,
                         }
                         return config;
-                    } 
+                    }
                     var slice_upper_buf: [100]u8 = undefined;
                     try writer.print(FormatToTextSeparators.bitfield_header, .{ "", ascii.upperString(slice_upper_buf[0..field_name.len], field_name) });
                     if (config.enable_neat_strings or config.enable_detailed_strings) {
-                        const slice = if (field_raw.len > 0 and field_raw[field_raw.len - 1] == '\n') field_raw[0..field_raw.len - 1] else field_raw;
-                        try writer.print(FormatToTextSeparators.raw_data_bin, .{ "START RAW DATA" });
+                        const slice = if (field_raw.len > 0 and field_raw[field_raw.len - 1] == '\n') field_raw[0 .. field_raw.len - 1] else field_raw;
+                        try writer.print(FormatToTextSeparators.raw_data_bin, .{"START RAW DATA"});
                         if (config.enable_neat_strings) {
                             var data_window = mem.window(u8, slice, 59, 59);
-                            while (data_window.next()) |data| try writer.print(FormatToTextSeparators.raw_data_win_bin, .{ data });
+                            while (data_window.next()) |data| try writer.print(FormatToTextSeparators.raw_data_win_bin, .{data});
                         }
                         if (config.enable_detailed_strings) {
                             for (slice, 0..) |elem, idx| {
@@ -154,29 +155,21 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
                                     '\r' => " CARRIAGE RETURN",
                                     ' ' => " SPACE",
                                     '\u{0}' => " NULL",
-                                    else => &[_:0]u8{ elem },
+                                    else => &[_:0]u8{elem},
                                 };
                                 try writer.print(FormatToTextSeparators.raw_data_elem_bin, .{ idx, elem, elem, elem_out });
-                            } 
+                            }
                         }
-                        try writer.print(FormatToTextSeparators.raw_data_bin, .{ "END RAW DATA" });
-                    }
-                    else try writer.print(FormatToTextSeparators.raw_data_bin, .{ "DATA OMITTED FROM OUTPUT" });
-
+                        try writer.print(FormatToTextSeparators.raw_data_bin, .{"END RAW DATA"});
+                    } else try writer.print(FormatToTextSeparators.raw_data_bin, .{"DATA OMITTED FROM OUTPUT"});
                 },
-                .Optional => { 
-                    return fmtFieldRaw(
-                        self, 
-                        field_raw orelse return null,
-                        field_name,
-                        writer,
-                        config
-                    );
+                .optional => {
+                    return fmtFieldRaw(self, field_raw orelse return null, field_name, writer, config);
                 },
-                .Int, .Bool => {
+                .int, .bool => {
                     const bits = try intToBitArray(field_raw);
                     for (bits) |bit| {
-                        if (config._col_idx == 0) try writer.print("{d:0>4}|", .{ config._row_idx });
+                        if (config._col_idx == 0) try writer.print("{d:0>4}|", .{config._row_idx});
                         const gap: u8 = gapBlk: {
                             if (config._field_idx < bits.len - 1) {
                                 config._field_idx += 1;
@@ -214,9 +207,9 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
 /// Convert an Integer to a BitArray of equivalent bits in MSB Format.
 pub fn intToBitArray(int: anytype) ![@bitSizeOf(@TypeOf(int))]u1 {
     const IntT = @TypeOf(int);
-    if (IntT == bool or IntT == u1) return [_]u1{ @bitCast(int) };
-    if ((@typeInfo(IntT) != .Int)) {
-        std.debug.print("\nType '{s}' is not an Integer.\n", .{ @typeName(IntT) });
+    if (IntT == bool or IntT == u1) return [_]u1{@bitCast(int)};
+    if ((@typeInfo(IntT) != .int)) {
+        std.debug.print("\nType '{s}' is not an Integer.\n", .{@typeName(IntT)});
         return error.NotAnInteger;
     }
     var bit_ary: [@bitSizeOf(IntT)]u1 = undefined;
@@ -229,14 +222,17 @@ pub fn intToBitArray(int: anytype) ![@bitSizeOf(@TypeOf(int))]u1 {
 pub fn toBitsMSB(obj: anytype) !meta.Int(.unsigned, @bitSizeOf(@TypeOf(obj))) {
     const ObjT = @TypeOf(obj);
     return switch (@typeInfo(ObjT)) {
-        .Bool => @bitCast(obj),
-        .Int => obj,
-        .Struct => structInt: {
+        .bool => @bitCast(obj),
+        .int => obj,
+        .@"struct" => structInt: {
             const obj_size = @bitSizeOf(ObjT);
             var bits_int: meta.Int(.unsigned, obj_size) = 0;
             var bits_width: math.Log2IntCeil(@TypeOf(bits_int)) = obj_size;
             const fields = meta.fields(ObjT);
             inline for (fields) |field| {
+                const field_info = @typeInfo(field.type);
+                if (field_info == .optional) continue;
+
                 const field_self = @field(obj, field.name);
                 bits_width -= @bitSizeOf(@TypeOf(field_self));
                 bits_int |= @as(@TypeOf(bits_int), @intCast(try toBitsMSB(field_self))) << @as(math.Log2Int(@TypeOf(bits_int)), @intCast(bits_width));
@@ -244,7 +240,7 @@ pub fn toBitsMSB(obj: anytype) !meta.Int(.unsigned, @bitSizeOf(@TypeOf(obj))) {
             break :structInt bits_int;
         },
         else => {
-            std.debug.print("\nType '{s}' is not an Integer, Bool, or Struct.\n", .{ @typeName(ObjT) });
+            std.debug.print("\nType '{s}' is not an Integer, Bool, or Struct.\n", .{@typeName(ObjT)});
             return error.NoConversionToMSB;
         },
     };
@@ -252,7 +248,7 @@ pub fn toBitsMSB(obj: anytype) !meta.Int(.unsigned, @bitSizeOf(@TypeOf(obj))) {
 
 /// Config Struct for `formatToText`()
 /// Note, this is also used as a Context between recursive calls.
-const FormatToTextConfig = struct{
+const FormatToTextConfig = struct {
     /// Add a Bit Ruler to the formatted output.
     add_bit_ruler: bool = false,
     /// Add the Title of BitFieldGroups to the formatted output.
@@ -281,10 +277,10 @@ const FormatToTextConfig = struct{
 };
 
 /// Struct of Separators for `formatToText`()
-const FormatToTextSeparators = struct{
+const FormatToTextSeparators = struct {
     // Binary Separators
     pub const bit_ruler_bin: []const u8 =
-        \\     0                   1                   2                   3   
+        \\     0                   1                   2                   3
         \\     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
         \\WORD+---------------+---------------+---------------+---------------+
         \\
@@ -308,7 +304,6 @@ const FormatToTextSeparators = struct{
     pub const bitfield_cutoff_bin_old: []const u8 = "END>+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+\n";
 };
 
-
 /// Kinds of BitField Groups
 pub const Kind = enum {
     BASIC,
@@ -317,4 +312,3 @@ pub const Kind = enum {
     PACKET,
     FRAME,
 };
-
