@@ -411,7 +411,7 @@ pub const TCP = struct {
             psh: bool = false,
             rst: bool = false,
             syn: bool = false,
-            fin: bool = true,
+            fin: bool = false,
 
             pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
         };
