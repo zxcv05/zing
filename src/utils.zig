@@ -6,6 +6,12 @@ const fmt = std.fmt;
 const mem = std.mem;
 const meta = std.meta;
 
+pub fn structInEnum(comptime EnumT: type, value: @typeInfo(EnumT).@"enum".tag_type) bool {
+    return for (std.enums.values(EnumT)) |e_val| {
+        if (value == @intFromEnum(e_val)) break true;
+    } else false;
+}
+
 pub fn structAsEnum(comptime T: type) type {
     const type_decls = meta.declarations(T);
     const TagT = @TypeOf(@field(T, type_decls[0].name));

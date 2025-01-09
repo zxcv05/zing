@@ -121,8 +121,10 @@ pub const IP = struct {
         /// Create a new IP Option from the provided Byte Buffer (`byte_buf`).
         pub fn from(byte_buf: []const u8) !@This() {
             if (byte_buf.len == 0) return error.EmptyByteBuffer;
-            if (!OptionTypes.inEnum(byte_buf[0])) return error.UnimplementedType;
-            return switch (@as(OptionTypes.Enum(), @enumFromInt(byte_buf[0]))) {
+            const OptionTypesEnum = utils.structAsEnum(OptionTypes);
+            if (utils.structInEnum(OptionTypesEnum, byte_buf[0]))
+                return error.UnimplementedType;
+            return switch (@as(OptionTypesEnum, @enumFromInt(byte_buf[0]))) {
                 .END_OF_OPTS, .NO_OP => .{
                     .opt_type = @bitCast(byte_buf[0]),
                     .data = byte_buf[3..7],
@@ -165,8 +167,6 @@ pub const IP = struct {
             pub const STREAM_ID: u8 = 136;
             /// Strict Source and Record Route
             pub const SSRR: u8 = 137;
-
-            pub usingnamespace utils.ImplEnumerable(@This());
         };
 
         /// IP Option Lengths
