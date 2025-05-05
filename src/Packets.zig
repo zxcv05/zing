@@ -146,8 +146,6 @@ pub const IP = struct {
                 pub const RESERVED: u2 = 1;
                 pub const DEBUG: u2 = 2;
                 pub const RESERVED2: u2 = 3;
-
-                pub usingnamespace utils.ImplEnumerable(@This());
             };
 
             pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
