@@ -413,7 +413,9 @@ pub const TCP = struct {
         };
 
         /// Calculates the total Length (in Bytes) and the Checksum (from 16-bit words) of this UDP Header with the given payload.
-        pub fn calcLengthAndChecksum(self: *@This(), alloc: mem.Allocator, pseudo_header: []const u8, opts_len: u16, payload: []const u8) !void {
+        pub fn calcLengthAndChecksum(self: *@This(), alloc: mem.Allocator, maybe_pseudo_header: ?[]const u8, opts_len: u16, payload: []const u8) !void {
+            const pseudo_header = maybe_pseudo_header orelse return error.NoPseudoHeader;
+
             self.data_offset = @as(u4, @intCast(@bitSizeOf(@This()) / 32)) + if (opts_len > 0) @as(u4, @truncate(opts_len / 4)) else 0;
 
             var tcp_hdr_bytes = try self.asNetBytesBFG(alloc);
