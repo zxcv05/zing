@@ -130,8 +130,8 @@ pub fn ImplBitFieldGroup(comptime T: type, comptime impl_config: ImplBitFieldGro
                     if (ptr.child != u8) {
                         if (!meta.hasFn(ptr.child, "formatToText")) return null;
                         switch (ptr.size) {
-                            .One => config = try field_raw.*.formatToText(writer, config),
-                            .Slice, .Many => {
+                            .one => config = try field_raw.*.formatToText(writer, config),
+                            .slice, .many => {
                                 for (field_raw) |*elm| config = try elm.*.formatToText(writer, config);
                             },
                             else => return null,

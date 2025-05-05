@@ -16,7 +16,7 @@ const ia = lib.interact;
 const Datagrams = lib.Datagrams;
 
 /// Config for Recording Datagrams.
-pub const RecordConfig = struct{
+pub const RecordConfig = struct {
     /// Filename.
     filename: ?[]const u8 = null,
     /// Enable Printing of Datagrams to `stdout`.
@@ -34,7 +34,7 @@ pub const RecordConfig = struct{
 };
 
 /// Record Context.
-pub const RecordContext = struct{
+pub const RecordContext = struct {
     /// Encode Format
     encode_fmt: craft.EncodeFormat = .txt,
     /// Enable Printing of Datagrams to `stdout`.
@@ -44,7 +44,7 @@ pub const RecordContext = struct{
     /// Record File
     record_file: *?fs.File,
     /// Record Writer
-    record_writer: ?*ia.InteractWriter(io.Writer(fs.File, os.WriteError, fs.File.write)),
+    record_writer: ?*ia.InteractWriter(fs.File.Writer),
     /// Datagrams Count.
     count: u32 = 0,
 };
@@ -52,18 +52,16 @@ pub const RecordContext = struct{
 /// Record Datagrams.
 pub fn record(alloc: mem.Allocator, config: RecordConfig) !void {
     var cwd = fs.cwd();
-    var record_file = 
+    var record_file =
         if (config.filename) |filename| recFile: {
             const format = @tagName(config.format);
-            const full_name = 
-                if (ascii.endsWithIgnoreCase(filename, format)) filename
-                else try fmt.allocPrint(alloc, "{s}.{s}", .{ filename, format });
+            const full_name =
+                if (ascii.endsWithIgnoreCase(filename, format)) filename else try fmt.allocPrint(alloc, "{s}.{s}", .{ filename, format });
             defer alloc.free(full_name);
             break :recFile try cwd.createFile(full_name, .{ .truncate = false });
-        }
-        else null;
+        } else null;
     defer if (record_file) |file| file.close();
-    const record_writer = if (record_file) |r_file| ia.InteractWriter(io.Writer(fs.File, os.WriteError, fs.File.write)).init(r_file.writer()) else null;
+    const record_writer = if (record_file) |r_file| ia.InteractWriter(fs.File.Writer).init(r_file.writer()) else null;
 
     var record_ctx = RecordContext{
         .encode_fmt = config.format,
@@ -75,7 +73,7 @@ pub fn record(alloc: mem.Allocator, config: RecordConfig) !void {
     };
 
     try ia.interact(
-        alloc, 
+        alloc,
         &record_ctx,
         .{ .if_name = config.if_name },
         .{
@@ -93,12 +91,12 @@ fn recordReact(alloc: mem.Allocator, ctx: anytype, datagram: Datagrams.Full) !vo
     if (ctx.record_file.*) |file| {
         try file.seekFromEnd(0);
         try craft.encodeDatagram(alloc, datagram, ctx.record_writer.?, ctx.encode_fmt);
-        if (ctx.encode_fmt == .txt) try ctx.record_writer.?.print("{s}", .{ ctx.dg_sep });
+        if (ctx.encode_fmt == .txt) try ctx.record_writer.?.print("{s}", .{ctx.dg_sep});
     }
     if (ctx.enable_print) {
         try craft.encodeDatagram(alloc, datagram, stdout, ctx.encode_fmt);
-        if (ctx.encode_fmt == .txt) try stdout.print("{s}", .{ ctx.dg_sep });
+        if (ctx.encode_fmt == .txt) try stdout.print("{s}", .{ctx.dg_sep});
     }
     ctx.*.count += 1;
-    log.debug("Recorded Datagram #{d}.", .{ ctx.count });
+    log.debug("Recorded Datagram #{d}.", .{ctx.count});
 }

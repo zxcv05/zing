@@ -30,3 +30,7 @@ pub const tools = @import("tools.zig");
 
 /// Utility functions for the Zing Library.
 pub const utils = @import("utils.zig");
+
+test {
+    @import("std").testing.refAllDeclsRecursive(@This());
+}

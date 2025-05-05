@@ -27,7 +27,8 @@ pub const IPv4 = packed struct(u32) {
     pub fn fromStr(str: []const u8) !@This() {
         var ip_tokens = ipTokens: {
             // Parse out port data
-            var port_tokens = mem.tokenize(u8, str, ":");
+
+            var port_tokens = mem.tokenizeScalar(u8, str, ':');
             _ = port_tokens.next();
             const port = port_tokens.next();
             _ = port;
@@ -35,10 +36,10 @@ pub const IPv4 = packed struct(u32) {
             // Parse out CIDR data
             port_tokens.reset();
             const cidr_str = port_tokens.next() orelse {
-                std.debug.print("\nThe provided string '{s}' is not a valid IPv4 address.\n", .{ str });
+                std.debug.print("\nThe provided string '{s}' is not a valid IPv4 address.\n", .{str});
                 return error.InvalidIPv4String;
             };
-            var cidr_tokens = mem.tokenize(u8, cidr_str, "/");
+            var cidr_tokens = mem.tokenizeScalar(u8, cidr_str, '/');
             _ = cidr_tokens.next();
             const cidr = cidr_tokens.next();
             _ = cidr;
@@ -46,10 +47,10 @@ pub const IPv4 = packed struct(u32) {
             // Parse out IP data
             cidr_tokens.reset();
             const ip_str = cidr_tokens.next() orelse {
-                std.debug.print("\nThe provided string '{s}' is not a valid IPv4 address.\n", .{ str });
+                std.debug.print("\nThe provided string '{s}' is not a valid IPv4 address.\n", .{str});
                 return error.InvalidIPv4String;
             };
-            break :ipTokens mem.tokenize(u8, ip_str, ".");
+            break :ipTokens mem.tokenizeScalar(u8, ip_str, '.');
         };
 
         var ip_out: @This() = .{};
@@ -124,11 +125,11 @@ pub const IPv4 = packed struct(u32) {
     /// Note, user owns memory of returned slice.
     pub fn toStr(self: *const @This(), alloc: mem.Allocator) ![]const u8 {
         var str_builder = std.ArrayList(u8).init(alloc);
-        try str_builder.writer().print("{d}.{d}.{d}.{d}", .{ 
-            self.first, 
-            self.second, 
-            self.third, 
-            self.fourth, 
+        try str_builder.writer().print("{d}.{d}.{d}.{d}", .{
+            self.first,
+            self.second,
+            self.third,
+            self.fourth,
         });
         return try str_builder.toOwnedSlice();
     }
@@ -144,13 +145,13 @@ pub const IPv4 = packed struct(u32) {
             inline .string, .allocated_string => |str| fromStr(str) catch return error.UnexpectedToken,
             else => (try json.parseFromTokenSource(@This(), alloc, source, options)).value,
         };
-    } 
+    }
 
     /// Custom JSON encoding for this IPv4 Address.
     pub fn jsonStringify(self: *const @This(), writer: anytype) !void {
         var out_buf: [20]u8 = undefined;
         var fba = heap.FixedBufferAllocator.init(out_buf[0..]);
-        try writer.print("\"{s}\"", .{ try self.toStr(fba.allocator()) });
+        try writer.print("\"{s}\"", .{try self.toStr(fba.allocator())});
     }
 
     pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
@@ -170,22 +171,19 @@ pub const MAC = packed struct(u48) {
     /// Create a MAC Address from a string.
     pub fn fromStr(str: []const u8) !@This() {
         var mac_tokens = macTokens: {
-            const symbols = [_][]const u8{ ":", "-", " " };
+            const symbols = [_]u8{ ':', '-', ' ' };
             for (symbols) |symbol| {
                 if (!std.mem.containsAtLeast(u8, str, 5, symbol)) continue;
-                var iter = mem.tokenize(u8, str, symbol);
+                var iter = mem.tokenizeScalar(u8, str, symbol);
                 break :macTokens utils.Iterator(u8).from(&iter);
-            }
-            else if (str.len == 12) {
+            } else if (str.len == 12) {
                 var iter = mem.window(u8, str, 2, 2);
                 break :macTokens utils.Iterator(u8).from(&iter);
-            }
-            else {
-                log.err("The provided string '{s}' is not a valid MAC Address.", .{ str });
+            } else {
+                log.err("The provided string '{s}' is not a valid MAC Address.", .{str});
                 return error.InvalidMACString;
             }
         };
-
 
         var mac_out: @This() = .{};
         var idx: u8 = 0;
@@ -211,17 +209,16 @@ pub const MAC = packed struct(u48) {
     /// Note, user owns memory of returned slice.
     pub fn toStr(self: *const @This(), alloc: mem.Allocator) ![]const u8 {
         var str_builder = std.ArrayList(u8).init(alloc);
-        try str_builder.writer().print("{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{ 
-            self.first, 
-            self.second, 
-            self.third, 
+        try str_builder.writer().print("{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
+            self.first,
+            self.second,
+            self.third,
             self.fourth,
             self.fifth,
-            self.sixth, 
+            self.sixth,
         });
         return try str_builder.toOwnedSlice();
     }
-
 
     /// Return this MAC Address as a ByteArray `[6]u8`
     pub fn toByteArray(self: *@This()) [6]u8 {
@@ -234,20 +231,20 @@ pub const MAC = packed struct(u48) {
             inline .string, .allocated_string => |str| fromStr(str) catch return error.UnexpectedToken,
             else => (try json.parseFromTokenSource(@This(), alloc, source, options)).value,
         };
-    } 
+    }
 
     /// Custom JSON encoding for this MAC Address.
     pub fn jsonStringify(self: *const @This(), writer: anytype) !void {
         var out_buf: [30]u8 = undefined;
         var fba = heap.FixedBufferAllocator.init(out_buf[0..]);
-        try writer.print("\"{s}\"", .{ try self.toStr(fba.allocator()) });
+        try writer.print("\"{s}\"", .{try self.toStr(fba.allocator())});
     }
 
     pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
 };
 
 /// Port
-pub const Port = struct{
+pub const Port = struct {
     pub fn sliceFromStr(alloc: mem.Allocator, ports_str: []const u8) ![]u16 {
         if (mem.indexOfScalar(u8, ports_str, '-')) |_| return try getRange(alloc, u16, 10, ports_str);
         var ports_list = std.ArrayList(u16).init(alloc);
@@ -266,6 +263,6 @@ pub fn getRange(alloc: mem.Allocator, comptime NumT: type, base: u8, rng_str: []
 
     var num_list = std.ArrayList(NumT).init(alloc);
     for (start..end) |num| try num_list.append(@truncate(num));
-    
+
     return num_list.toOwnedSlice();
 }

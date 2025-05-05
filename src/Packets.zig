@@ -53,8 +53,6 @@ pub const IP = struct {
             reserved: bool = false,
             dont_frag: bool = true,
             more_frags: bool = false,
-
-            pub usingnamespace BFG.ImplBitFieldGroup(@This(), .{});
         };
 
         // IP Packet Service Precedence Levels
@@ -246,8 +244,6 @@ pub const ARP = packed struct {
         pub const OpCodes = struct {
             pub const REQUEST: u16 = 1;
             pub const REPLY: u16 = 2;
-
-            pub usingnamespace utils.ImplEnumerable(@This());
         };
 
         pub fn calcCRC(_: @This(), _: mem.Allocator, _: []const u8) !void {}
@@ -289,8 +285,6 @@ pub const ICMP = packed struct {
             pub const TIMESTAMP_REPLY: u8 = 14;
             pub const INFO_REQUEST: u8 = 15;
             pub const INFO_REPLY: u8 = 16;
-
-            pub usingnamespace utils.ImplEnumerable(@This());
         };
 
         /// ICMP Codes
@@ -302,22 +296,16 @@ pub const ICMP = packed struct {
                 pub const PORT: u8 = 3;
                 pub const FRAG_NEEDED: u8 = 4;
                 pub const SRC_ROUTE_FAILED: u8 = 5;
-
-                pub usingnamespace utils.ImplEnumerable(@This());
             };
             pub const TIME_EXCEEDED = struct {
                 pub const TTL: u8 = 0;
                 pub const FRAG_REASSEMBLY: u8 = 1;
-
-                pub usingnamespace utils.ImplEnumerable(@This());
             };
             pub const REDIRECT = struct {
                 pub const NETWORK: u8 = 0;
                 pub const HOST: u8 = 1;
                 pub const TOS_AND_NETWORK: u8 = 2;
                 pub const TOS_AND_HOST: u8 = 3;
-
-                pub usingnamespace utils.ImplEnumerable(@This());
             };
         };
 
@@ -453,7 +441,8 @@ pub const TCP = struct {
         /// Create a new TCP Option from the provided Byte Buffer (`byte_buf`).
         pub fn from(byte_buf: []const u8) !@This() {
             if (byte_buf.len == 0) return error.EmptyByteBuffer;
-            return switch (@as(OptionKinds.Enum(), @enumFromInt(byte_buf[0]))) {
+
+            return switch (@as(std.meta.FieldEnum(OptionKinds), @enumFromInt(byte_buf[0]))) {
                 .END_OF_OPTS, .NO_OP => .{ .kind = @bitCast(byte_buf[0]) },
                 else => .{
                     .kind = @bitCast(byte_buf[0]),
@@ -473,8 +462,6 @@ pub const TCP = struct {
         pub const END_OF_OPTS: u8 = 0;
         pub const NO_OP: u8 = 1;
         pub const MAX_SEG_SIZE: u8 = 2;
-
-        pub usingnamespace utils.ImplEnumerable(@This());
     };
 
     /// Create a new TCP Packet from the provided Byte Buffer (`byte_buf`) using the provided Allocator (`alloc`).

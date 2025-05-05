@@ -11,5 +11,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    _ = zing_lib_mod;
+    const zing_test = b.addTest(.{
+        .root_module = zing_lib_mod,
+    });
+
+    const run_test = b.addRunArtifact(zing_test);
+    const run_step = b.step("test", "Test");
+
+    run_step.dependOn(&run_test.step);
 }
