@@ -119,11 +119,8 @@ pub const IP = struct {
         /// Create a new IP Option from the provided Byte Buffer (`byte_buf`).
         pub fn from(byte_buf: []const u8) !@This() {
             if (byte_buf.len == 0) return error.EmptyByteBuffer;
-            const OptionTypesEnum = utils.structAsEnum(OptionTypes);
-            if (utils.structInEnum(OptionTypesEnum, byte_buf[0]))
-                return error.UnimplementedType;
-            return switch (@as(OptionTypesEnum, @enumFromInt(byte_buf[0]))) {
-                .END_OF_OPTS, .NO_OP => .{
+            return switch (byte_buf[0]) {
+                OptionTypes.END_OF_OPTS, OptionTypes.NO_OP => .{
                     .opt_type = @bitCast(byte_buf[0]),
                     .data = byte_buf[3..7],
                 },
@@ -193,9 +190,8 @@ pub const IP = struct {
         var hdr: Header = mem.bytesToValue(Header, size_buf[0..]);
         try hdr.toLSB();
         const ip_len: u16 = hdr.ip_header_len * @as(u16, 4);
-        const protocol_enum: utils.structAsEnum(Header.Protocols) = @enumFromInt(hdr.protocol);
-        const p_hdr_end: u16 = ip_len + @as(u16, switch (protocol_enum) {
-            .TCP, .UDP => @bitSizeOf(SegmentPseudoHeader) / 8,
+        const p_hdr_end: u16 = ip_len + @as(u16, switch (hdr.protocol) {
+            Header.Protocols.TCP, Header.Protocols.UDP => @bitSizeOf(SegmentPseudoHeader) / 8,
             else => 0,
         });
         return .{

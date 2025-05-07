@@ -1,4 +1,4 @@
-//! Send Datagrams 
+//! Send Datagrams
 
 const std = @import("std");
 const stdout = std.io.getStdOut().writer();
@@ -31,7 +31,7 @@ pub fn sendDatagramFile(alloc: mem.Allocator, filename: []const u8, if_name: []c
 }
 
 /// Config for `sendDatagramFileCmd`().
-pub const SendDatagramFileConfig = struct{
+pub const SendDatagramFileConfig = struct {
     filename: []const u8,
     if_name: ?[]const u8 = "eth0",
 };
@@ -64,6 +64,5 @@ pub fn sendBytes(alloc: mem.Allocator, payload_bytes: []u8, send_sock: conn.IFSo
     log.debug("Writing {d}B to '{s} | {s}'...", .{ payload_bytes.len, send_sock.if_name, fmt.fmtSliceHexUpper(&@as([6]u8, @bitCast((try send_sock.getMAC())))) });
     const written_bytes = os.write(send_sock.desc, payload_bytes) catch return error.CouldNotWriteData;
     //const written_bytes = os.sendto(send_sock, payload_bytes, 0, @ptrCast(*linux.sockaddr, &if_addr), @sizeOf(@TypeOf(if_addr))) catch return error.CouldNotWriteData;
-    log.debug("Successfully wrote {d}B / {d}B!", .{ written_bytes, payload_bytes.len }); 
-
+    log.debug("Successfully wrote {d}B / {d}B!", .{ written_bytes, payload_bytes.len });
 }

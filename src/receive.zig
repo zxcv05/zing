@@ -18,13 +18,12 @@ const ia = lib.interact;
 const Addresses = lib.Addresses;
 const Datagrams = lib.Datagrams;
 
-
 /// Config for `recvDatagramCmd` and `recvDatagramStreamCmd`
-pub const RecvDatagramConfig = struct{
+pub const RecvDatagramConfig = struct {
     /// Interface Name.
     if_name: []const u8 = "eth0",
     /// Max Datagrams. (Stream Only)
-    max_dg: ?u64 = null, 
+    max_dg: ?u64 = null,
 };
 
 /// Cova CLI Wrapper for `recvDatagram`().
@@ -58,10 +57,10 @@ pub fn recvDatagram(alloc: mem.Allocator, recv_sock: conn.IFSocket) !Datagrams.F
         },
     };
     const recv_buf = try alloc.alloc(u8, max_frame_len);
-    const recv_bytes = try os.recv(recv_sock.desc, recv_buf[0..], 0);
+    const recv_bytes = try std.posix.recv(recv_sock.desc, recv_buf[0..], 0);
     if (recv_bytes > max_frame_len) {
-        log.warn("The number of received bytes '{d}B' is greater than the expected frame length '{d}B' for this interface '{s}'.", .{ 
-            recv_bytes, 
+        log.warn("The number of received bytes '{d}B' is greater than the expected frame length '{d}B' for this interface '{s}'.", .{
+            recv_bytes,
             max_frame_len,
             recv_sock.if_name,
         });
@@ -72,7 +71,6 @@ pub fn recvDatagram(alloc: mem.Allocator, recv_sock: conn.IFSocket) !Datagrams.F
 
     return Datagrams.Full.fromBytes(alloc, frame_buf, l2_type);
 }
-
 
 /// Cova CLI Wrapper for `recvDatagramStream`().
 pub fn recvDatagramStreamCmd(alloc: mem.Allocator, writer: anytype, dg_buf: *std.ArrayList(Datagrams.Full), config: RecvDatagramConfig) !void {
@@ -91,7 +89,7 @@ pub fn recvDatagramStream(alloc: mem.Allocator, writer: anytype, if_name: []cons
             error.UnimplementedType => continue,
             else => return err,
         };
-        try dg_buf.append(datagram);        
+        try dg_buf.append(datagram);
 
         try writer.print(
             \\
@@ -102,15 +100,10 @@ pub fn recvDatagramStream(alloc: mem.Allocator, writer: anytype, if_name: []cons
             \\==============================
             \\
             \\
-            , .{ 
-                count,
-                datagram 
-            }
-        );
+        , .{ count, datagram });
         count += 1;
     }
 }
-
 
 /// Receive a Stream of Datagrams to an Interaction Buffer.
 /// This is designed to be run in its own Thread.
@@ -118,9 +111,7 @@ pub fn recvDatagramThread(alloc: mem.Allocator, recv_sock: conn.IFSocket, dg_buf
     var dg_count: u32 = 0;
     while (if (max_dg > 0) dg_count <= max_dg else true) : (dg_count += 1) {
         const datagram = recvDatagram(alloc, recv_sock) catch |err| switch (err) {
-            error.UnimplementedType,
-            error.UnexpectedlySmallBuffer => 
-                continue,
+            error.UnimplementedType, error.UnexpectedlySmallBuffer => continue,
             else => return err,
         };
         try dg_buf.push(datagram);

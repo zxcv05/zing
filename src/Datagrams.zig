@@ -196,14 +196,13 @@ pub const Full = struct {
             const l3a_hdr_bytes: []const u8 =
                 if (l3a_hdr) |p_hdr| try p_hdr.asNetBytes(alloc) else &.{};
             const opts_len: u16, const l4_payload =
-                if (self.l4_options) |opts|
-            l4Payload: {
-                if (opts.len == 0) break :l4Payload .{ @intCast(opts.len), payload };
-                var pl_list = std.ArrayList(u8).init(alloc);
-                for (opts) |*opt| try pl_list.appendSlice(try @constCast(opt).asNetBytes(alloc));
-                try pl_list.appendSlice(payload);
-                break :l4Payload .{ @intCast(opts.len), try pl_list.toOwnedSlice() };
-            } else .{ 0, payload };
+                if (self.l4_options) |opts| l4Payload: {
+                    if (opts.len == 0) break :l4Payload .{ @intCast(opts.len), payload };
+                    var pl_list = std.ArrayList(u8).init(alloc);
+                    for (opts) |*opt| try pl_list.appendSlice(try @constCast(opt).asNetBytes(alloc));
+                    try pl_list.appendSlice(payload);
+                    break :l4Payload .{ @intCast(opts.len), try pl_list.toOwnedSlice() };
+                } else .{ 0, payload };
             try self.l4_header.?.calc(alloc, l3a_hdr_bytes, opts_len, l4_payload);
         }
 
@@ -211,20 +210,20 @@ pub const Full = struct {
         const l3_payload: []u8 = if (self.l3_header) |_| l3Payload: {
             const opts_len: u16, const l3_opts =
                 if (self.l3_options) |opts| .{
-                @intCast(opts.len),
-                l3Opts: {
-                    var opts_list = std.ArrayList(u8).init(alloc);
-                    for (opts) |*opt| try opts_list.appendSlice(try @constCast(opt).asNetBytes(alloc));
-                    break :l3Opts try opts_list.toOwnedSlice();
-                },
-            } else .{ 0, &.{} };
+                    @intCast(opts.len),
+                    l3Opts: {
+                        var opts_list = std.ArrayList(u8).init(alloc);
+                        for (opts) |*opt| try opts_list.appendSlice(try @constCast(opt).asNetBytes(alloc));
+                        break :l3Opts try opts_list.toOwnedSlice();
+                    },
+                } else .{ 0, &.{} };
 
             const l3_pl =
                 if (self.l4_header) |_| try mem.concat(alloc, u8, &.{
-                l3_opts,
-                try self.l4_header.?.asNetBytes(alloc),
-                payload,
-            }) else payload;
+                    l3_opts,
+                    try self.l4_header.?.asNetBytes(alloc),
+                    payload,
+                }) else payload;
             try self.l3_header.?.calc(alloc, &.{}, opts_len, l3_pl);
             break :l3Payload l3_pl;
         } else &.{};
@@ -233,13 +232,13 @@ pub const Full = struct {
         if (self.l2_footer) |_| {
             const l2_payload =
                 if (self.l3_header) |_| try mem.concat(alloc, u8, &.{
-                try self.l2_header.asNetBytes(alloc),
-                try self.l3_header.?.asNetBytes(alloc),
-                l3_payload,
-            }) else try mem.concat(alloc, u8, &.{
-                try self.l2_header.asNetBytes(alloc),
-                payload,
-            });
+                    try self.l2_header.asNetBytes(alloc),
+                    try self.l3_header.?.asNetBytes(alloc),
+                    l3_payload,
+                }) else try mem.concat(alloc, u8, &.{
+                    try self.l2_header.asNetBytes(alloc),
+                    payload,
+                });
 
             try self.l2_footer.?.calc(alloc, &.{}, 0, l2_payload);
         }
@@ -292,9 +291,9 @@ pub const Full = struct {
         };
 
         // Layer 3
-        if (!EthHeader.EtherTypes.inEnum(l3_type)) return error.UnimplementedType;
-        const payload_buf = switch (@as(EthHeader.EtherTypes.Enum(), @enumFromInt(l3_type))) {
-            .IPv4 => ipv4Payload: {
+        // if (!EthHeader.EtherTypes.inEnum(l3_type)) return error.UnimplementedType;
+        const payload_buf = switch (l3_type) {
+            EthHeader.EtherTypes.IPv4 => ipv4Payload: {
                 const ip_packet = try Packets.IP.from(alloc, l3_buf[0..]);
                 const l4_buf = l3_buf[ip_packet.len..];
 
@@ -303,9 +302,8 @@ pub const Full = struct {
                 datagram.l3_options = if (ip_packet.options) |opts| @ptrCast(opts) else null;
 
                 // Layer 4
-                if (!IPProtos.inEnum(ip_packet.header.protocol)) return error.UnimplementedType;
-                break :ipv4Payload switch (@as(IPProtos.Enum(), @enumFromInt(ip_packet.header.protocol))) {
-                    .UDP => payload: {
+                break :ipv4Payload switch (ip_packet.header.protocol) {
+                    IPProtos.UDP => payload: {
                         const UDPHeader = lib.Packets.UDP.Header;
                         const udp_hdr_end = (@bitSizeOf(UDPHeader) / 8);
                         var udp_hdr = mem.bytesToValue(UDPHeader, l4_buf[0..udp_hdr_end]);
@@ -314,14 +312,14 @@ pub const Full = struct {
                         datagram.l4_options = null;
                         break :payload l4_buf[udp_hdr_end..];
                     },
-                    .TCP => payload: {
+                    IPProtos.TCP => payload: {
                         const tcp_packet = try Packets.TCP.from(alloc, l4_buf[0..]);
                         datagram.l4_header = .{ .tcp = tcp_packet.header };
                         datagram.l4_options = if (tcp_packet.options) |opts| @ptrCast(opts) else null;
                         log.debug("TCP LEN: {d}B | {d}W", .{ tcp_packet.len, tcp_packet.header.data_offset });
                         break :payload l4_buf[@min(l4_buf.len, tcp_packet.len)..];
                     },
-                    .ICMP => payload: {
+                    IPProtos.ICMP => payload: {
                         const ICMPHeader = lib.Packets.ICMP.Header;
                         const icmp_hdr_end = (@bitSizeOf(ICMPHeader) / 8);
                         var size_buf: [@sizeOf(ICMPHeader)]u8 = .{0} ** @sizeOf(ICMPHeader);
@@ -333,12 +331,11 @@ pub const Full = struct {
                         break :payload l4_buf[icmp_hdr_end..];
                     },
                     else => {
-                        //log.warn("Not a parseable IP Protocol '{s}'. Finished parsing.", .{ ip_proto });
                         return error.UnimplementedType;
                     },
                 };
             },
-            .ARP => arpPayload: {
+            EthHeader.EtherTypes.ARP => arpPayload: {
                 const ARPHeader = lib.Packets.ARP.Header;
                 const arp_hdr_end = (@bitSizeOf(ARPHeader) / 8);
                 var size_buf: [@sizeOf(ARPHeader)]u8 = .{0} ** @sizeOf(ARPHeader);
@@ -356,7 +353,6 @@ pub const Full = struct {
                 break :arpPayload l3_buf[arp_hdr_end..];
             },
             else => {
-                //log.warn("Not a parseable Ethernet Protocol '{d}'. Finished parsing.", .{ l3_type });
                 return error.UnimplementedType;
             },
         };
